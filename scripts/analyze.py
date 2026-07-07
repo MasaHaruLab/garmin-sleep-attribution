@@ -60,26 +60,23 @@ def main() -> int:
     df["evening_ai"] = (num(df, "n_after_2000").fillna(0) > 0).astype(int)
 
     n = len(df)
-    lines = [f"# 睡眠归因分析\n", f"合并后共 **{n} 个夜晚** 同时有睡眠和 AI 使用数据。\n"]
-
-    # 1. group test
-    lines.append("## 1. 晚上用不用 AI（20:00 后）——鸭哥同款对照\n")
     g1 = df[df.evening_ai == 1]
     g0 = df[df.evening_ai == 0]
-    lines.append(f"- 用了 AI 的夜晚: **{len(g1)}**  ·  没用的夜晚: **{len(g0)}**\n")
-    lines.append("| 睡眠指标 | 晚上用AI | 晚上不用AI | 差值 |\n|---|---|---|---|")
+
+    # --- compute once, render per language ------------------------------------
+    # 1. group test
+    group_rows = []  # (outcome, m1, m0, delta, worse)
     for o in OUTCOMES:
         if o not in df:
             continue
         m1, m0 = num(g1, o).mean(), num(g0, o).mean()
         if np.isnan(m1) or np.isnan(m0):
             continue
-        arrow = "↓更差" if (o not in WORSE_IF_HIGH and m1 < m0) or (o in WORSE_IF_HIGH and m1 > m0) else ""
-        lines.append(f"| {o} | {m1:.2f} | {m0:.2f} | {m1 - m0:+.2f} {arrow} |")
-    lines.append("")
+        worse = (o not in WORSE_IF_HIGH and m1 < m0) or (o in WORSE_IF_HIGH and m1 > m0)
+        group_rows.append((o, m1, m0, m1 - m0, worse))
 
     # 2. correlations
-    lines.append("\n## 2. 各因素与睡眠的相关性（Pearson r，绝对值越大越相关）\n")
+    corr_blocks = []  # (outcome, [(r, rs, p, k), ...])
     for o in OUTCOMES:
         if o not in df or num(df, o).notna().sum() < 5:
             continue
@@ -96,21 +93,18 @@ def main() -> int:
         if not cors:
             continue
         cors.sort(reverse=True)
-        lines.append(f"**{o}** 的最强预测因素:")
-        for _, r, rs, p, k in cors[:4]:
-            lines.append(f"  - `{p}`: r={r:+.2f} (spearman {rs:+.2f}, n={k})")
-        lines.append("")
+        corr_blocks.append((o, [(r, rs, p, k) for _, r, rs, p, k in cors[:4]]))
 
     # 3. standardized regression: sleep_score ~ predictors (incl. bedtime control)
-    lines.append("\n## 3. 多变量回归：控制住『上床晚』之后，晚用AI还伤睡眠吗？\n")
     reg_preds = [p for p in ["last_ai_decimal", "n_after_2200", "bedtime_decimal"]
                  if p in df]
-    # Auto-fold exercise into the regression once she has ≥5 workout nights, so we
-    # can see whether training helps sleep — or offsets late AI — net of bedtime.
+    # Auto-fold exercise into the regression once there are ≥5 workout nights, so
+    # we can see whether training helps sleep — or offsets late AI — net of bedtime.
     if "exercised" in df and num(df, "exercised").fillna(0).sum() >= 5:
         reg_preds.append("exercise_intensity_min"
                          if "exercise_intensity_min" in df else "exercised")
     sub = df[["sleep_score"] + reg_preds].apply(pd.to_numeric, errors="coerce").dropna()
+    reg = None  # (n, [(name, beta), ...]) or ("insufficient", n)
     if len(sub) >= max(8, len(reg_preds) + 3):
         y = sub["sleep_score"].to_numpy()
         X = sub[reg_preds].to_numpy()
@@ -118,15 +112,67 @@ def main() -> int:
         ys = (y - y.mean()) / (y.std() + 1e-9)
         A = np.column_stack([np.ones(len(ys)), Xs])
         beta, *_ = np.linalg.lstsq(A, ys, rcond=None)
-        lines.append(f"sleep_score（标准化）回归，n={len(sub)}：")
-        for name, b in zip(reg_preds, beta[1:]):
-            eff = "伤睡眠" if b < 0 else "利睡眠"
-            lines.append(f"  - `{name}`: 标准化系数 {b:+.2f}  → {eff}")
-        lines.append("\n> 若 `last_ai_decimal`/`n_after_2200` 的系数在控制 `bedtime_decimal` "
-                     "后仍为负，说明晚用AI伤的是睡眠**质量**，不只是让你睡得晚。")
+        reg = (len(sub), list(zip(reg_preds, beta[1:])))
     else:
-        lines.append(f"样本不足（n={len(sub)}），回归先跳过，等数据更多再跑。")
+        reg = ("insufficient", len(sub))
 
+    ZH = dict(
+        title="睡眠归因分析", intro=f"合并后共 **{n} 个夜晚** 同时有睡眠和因素数据。",
+        s1="## 1. 晚上用不用 AI（20:00 后）——分组对照",
+        counts=f"- 有此因素的夜晚: **{len(g1)}**  ·  无的夜晚: **{len(g0)}**",
+        thead="| 睡眠指标 | 有此因素 | 无此因素 | 差值 |\n|---|---|---|---|",
+        worse="↓更差",
+        s2="## 2. 各因素与睡眠的相关性（Pearson r，绝对值越大越相关）",
+        strongest="的最强预测因素:",
+        s3="## 3. 多变量回归：控制住『上床晚』之后，晚用因素还伤睡眠吗？",
+        regline=lambda k: f"sleep_score（标准化）回归，n={k}：",
+        hurt="伤睡眠", help="利睡眠", coef="标准化系数",
+        note="> 若某因素的系数在控制 `bedtime_decimal` 后仍为负，说明它伤的是睡眠"
+             "**质量**，不只是让你睡得晚。",
+        insuff=lambda k: f"样本不足（n={k}），回归先跳过，等数据更多再跑。",
+    )
+    EN = dict(
+        title="Sleep Attribution Analysis",
+        intro=f"After the join, **{n} nights** have both sleep and factor data.",
+        s1="## 1. Evenings with vs. without the factor (AI use after 20:00) — group test",
+        counts=f"- Nights with the factor: **{len(g1)}**  ·  without: **{len(g0)}**",
+        thead="| Sleep metric | With factor | Without | Delta |\n|---|---|---|---|",
+        worse="↓worse",
+        s2="## 2. Correlation of each factor with sleep (Pearson r; larger |r| = stronger)",
+        strongest="— strongest predictors:",
+        s3="## 3. Multivariate regression: after controlling for a late bedtime, does the factor still hurt?",
+        regline=lambda k: f"sleep_score (standardized) regression, n={k}:",
+        hurt="hurts sleep", help="helps sleep", coef="std. coef",
+        note="> If a factor's coefficient stays negative after `bedtime_decimal` is in "
+             "the model, it hurts sleep **quality**, not just duration.",
+        insuff=lambda k: f"Insufficient sample (n={k}); regression skipped until more data.",
+    )
+
+    def render(L):
+        out = [f"# {L['title']}\n", f"{L['intro']}\n", f"{L['s1']}\n", f"{L['counts']}\n",
+               L["thead"]]
+        for o, m1, m0, delta, worse in group_rows:
+            out.append(f"| {o} | {m1:.2f} | {m0:.2f} | {delta:+.2f} {L['worse'] if worse else ''} |")
+        out.append("")
+        out.append(f"\n{L['s2']}\n")
+        for o, tops in corr_blocks:
+            out.append(f"**{o}** {L['strongest']}")
+            for r, rs, p, k in tops:
+                out.append(f"  - `{p}`: r={r:+.2f} (spearman {rs:+.2f}, n={k})")
+            out.append("")
+        out.append(f"\n{L['s3']}\n")
+        if reg[0] == "insufficient":
+            out.append(L["insuff"](reg[1]))
+        else:
+            k, betas = reg
+            out.append(L["regline"](k))
+            for name, b in betas:
+                eff = L["hurt"] if b < 0 else L["help"]
+                out.append(f"  - `{name}`: {L['coef']} {b:+.2f}  → {eff}")
+            out.append(f"\n{L['note']}")
+        return out
+
+    lines = render(ZH) + ["\n\n---\n\n# English\n"] + render(EN)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(lines), encoding="utf-8")
     print("\n".join(lines))

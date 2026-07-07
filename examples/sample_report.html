@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>睡眠归因报告</title>
+<title>睡眠归因报告 · Sleep Attribution Report</title>
 <style>
 :root{--bg:#0a0e1a;--card:#121829;--ink:#e8eef7;--dim:#8595b0;--ai:#ff5c7c;--no:#22d3ee;--line:#1e2740}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
@@ -16,7 +16,7 @@ border-radius:18px;padding:26px 28px;margin-bottom:24px}
 .metric{margin-bottom:16px} .mlabel{font-size:14px;color:var(--dim);margin-bottom:6px}
 .note{color:var(--ai);font-size:12px}
 .row{display:flex;align-items:center;gap:10px;margin:5px 0}
-.tag{font-size:12px;width:66px;flex:none;text-align:right} .tag.ai{color:var(--ai)} .tag.no{color:var(--no)}
+.tag{font-size:11px;width:100px;flex:none;text-align:right} .tag.ai{color:var(--ai)} .tag.no{color:var(--no)}
 .track{flex:1;background:#0a0f1e;border-radius:8px;height:20px;overflow:hidden}
 .fill{height:100%;border-radius:8px} .fill.ai{background:linear-gradient(90deg,#ff5c7c,#ff8aa3)}
 .fill.no{background:linear-gradient(90deg,#22d3ee,#67e8f9)}
@@ -25,62 +25,72 @@ svg{width:100%;height:auto} .dot{fill:var(--ai);opacity:.8} .grid{stroke:var(--l
 .axl{fill:var(--dim);font-size:11px} .trend{stroke:var(--no);stroke-width:2;stroke-dasharray:5 4}
 .lead{color:var(--no);font-weight:700}
 ul{padding-left:18px} li{margin:7px 0} .muted{color:var(--dim);font-size:13px}
+.en{color:var(--dim);font-size:13px;margin-top:4px}
 .foot{color:var(--dim);font-size:12px;margin-top:8px}
 </style></head><body><div class="wrap">
-<h1>睡眠归因报告</h1>
-<p class="sub">复刻鸭哥《AI如何导致和修复了我的失眠问题》· 你自己的 Garmin + AI 使用数据 · 共 35 个可对齐的夜晚</p>
+<h1>睡眠归因报告 · Sleep Attribution Report</h1>
+<p class="sub">复刻鸭哥《AI如何导致和修复了我的失眠问题》· 你自己的数据 · 共 35 个可对齐的夜晚<br>
+<span class="en">Replicating Yage's sleep-attribution method · your own data · 35 aligned nights</span></p>
 
 <div class="hero">
-  <div class="big">−13&nbsp;<small>分</small></div>
-  <div style="margin-top:8px">晚上（20:00 后）用 AI 的夜晚，睡眠得分平均 <b>低 13 分</b>、少睡 <b>44 分钟</b>、静息心率 <b>高 5 bpm</b>。<br>
-  <span class="muted">元凶不是「睡得晚」——控制住上床时间后，「深夜用 AI 的量」仍是最伤睡眠质量的因素。</span></div>
+  <div class="big">−15&nbsp;<small>分 / pts</small></div>
+  <div style="margin-top:8px">有此因素（本例：晚上 20:00 后用 AI）的夜晚，睡眠得分平均
+  <b>−15 分</b>、睡眠时长 <b>−86 分钟</b>、静息心率 <b>+5 bpm</b>。
+  <div class="en">On nights with the factor present (here: AI use after 20:00), sleep score averages
+  <b>−15 pts</b>, sleep duration <b>−86 min</b>,
+  resting HR <b>+5 bpm</b> vs. nights without it.</div></div>
 </div>
 
-<div class="card"><h2>用不用 AI 的夜晚，睡眠对照</h2>
+<div class="card"><h2>有无此因素的夜晚对照 · With vs. without the factor</h2>
         <div class="metric">
-          <div class="mlabel">睡眠得分 <span class="note"></span></div>
-          <div class="row"><span class="tag ai">晚上用AI</span>
+          <div class="mlabel">睡眠得分 / Sleep score <span class="note"></span></div>
+          <div class="row"><span class="tag ai">有此因素 / on</span>
             <div class="track"><div class="fill ai" style="width:57.7%"></div></div>
             <span class="val">57.7</span></div>
-          <div class="row"><span class="tag no">不用AI</span>
+          <div class="row"><span class="tag no">无 / off</span>
             <div class="track"><div class="fill no" style="width:73.2%"></div></div>
             <span class="val">73.2</span></div>
         </div>
         <div class="metric">
-          <div class="mlabel">睡眠时长 (小时) <span class="note"></span></div>
-          <div class="row"><span class="tag ai">晚上用AI</span>
+          <div class="mlabel">睡眠时长 (小时) / Sleep (hours) <span class="note"></span></div>
+          <div class="row"><span class="tag ai">有此因素 / on</span>
             <div class="track"><div class="fill ai" style="width:66.4%"></div></div>
             <span class="val">6.0</span></div>
-          <div class="row"><span class="tag no">不用AI</span>
+          <div class="row"><span class="tag no">无 / off</span>
             <div class="track"><div class="fill no" style="width:82.3%"></div></div>
             <span class="val">7.4</span></div>
         </div>
         <div class="metric">
-          <div class="mlabel">静息心率 (bpm) <span class="note">越高越差</span></div>
-          <div class="row"><span class="tag ai">晚上用AI</span>
+          <div class="mlabel">静息心率 (bpm) / Resting HR (bpm) <span class="note">越高越差 · higher = worse</span></div>
+          <div class="row"><span class="tag ai">有此因素 / on</span>
             <div class="track"><div class="fill ai" style="width:76.8%"></div></div>
             <span class="val">69.1</span></div>
-          <div class="row"><span class="tag no">不用AI</span>
+          <div class="row"><span class="tag no">无 / off</span>
             <div class="track"><div class="fill no" style="width:71.2%"></div></div>
             <span class="val">64.0</span></div>
         </div></div>
 
-<div class="card"><h2>最后一次用 AI 的时间 越晚，睡眠得分越低（每点 = 一晚）</h2>
+<div class="card"><h2>最后一次用 AI 越晚，睡眠得分越低 · Later last-AI-use vs. sleep score（每点 = 一晚 / each dot = one night）</h2>
 <svg viewBox="0 0 620 300" role="img">
   <text x="36" y="264" class="axl" text-anchor="end">0</text><line x1="44" y1="260" x2="600" y2="260" class="grid"/><text x="36" y="203" class="axl" text-anchor="end">25</text><line x1="44" y1="199" x2="600" y2="199" class="grid"/><text x="36" y="142" class="axl" text-anchor="end">50</text><line x1="44" y1="138" x2="600" y2="138" class="grid"/><text x="36" y="81" class="axl" text-anchor="end">75</text><line x1="44" y1="77" x2="600" y2="77" class="grid"/><text x="36" y="20" class="axl" text-anchor="end">100</text><line x1="44" y1="16" x2="600" y2="16" class="grid"/><text x="44" y="278" class="axl">18:00</text><text x="155" y="278" class="axl">20:00</text><text x="266" y="278" class="axl">22:00</text><text x="378" y="278" class="axl">24:00</text><text x="489" y="278" class="axl">2:00</text><text x="600" y="278" class="axl">4:00</text>
   <line x1="44" y1="81" x2="600" y2="81" class="trend"/>
-  <text x="596" y="73" class="axl" text-anchor="end" fill="#22d3ee">不用AI夜晚的平均分 73</text>
+  <text x="596" y="73" class="axl" text-anchor="end" fill="#22d3ee">无此因素夜晚均分 / baseline 73</text>
   <circle cx="351" cy="99" r="4.5" class="dot"/><circle cx="319" cy="99" r="4.5" class="dot"/><circle cx="372" cy="109" r="4.5" class="dot"/><circle cx="415" cy="116" r="4.5" class="dot"/><circle cx="481" cy="131" r="4.5" class="dot"/><circle cx="361" cy="121" r="4.5" class="dot"/><circle cx="534" cy="128" r="4.5" class="dot"/><circle cx="438" cy="136" r="4.5" class="dot"/><circle cx="513" cy="143" r="4.5" class="dot"/><circle cx="480" cy="123" r="4.5" class="dot"/><circle cx="437" cy="128" r="4.5" class="dot"/><circle cx="319" cy="92" r="4.5" class="dot"/><circle cx="364" cy="104" r="4.5" class="dot"/><circle cx="468" cy="140" r="4.5" class="dot"/>
 </svg>
-<p class="muted">横轴＝当晚最后一次用 AI 的时间（越往右越晚，含凌晨）。点越往右下走越明显：Pearson r = -0.95。</p>
+<p class="muted">横轴 = 当晚最后一次用 AI 的时间（越右越晚，含凌晨）。Pearson r = -0.95。
+<span class="en">X = clock time of the last AI use that evening (rightward = later, into the small hours).</span></p>
 </div>
 
-<div class="card"><h2>该怎么办</h2>
+<div class="card"><h2>怎么用这份结果 · How to act on this</h2>
 <ul>
-<li><span class="lead">最直接：</span>晚饭后尽量不碰 AI。哪怕改成刷视频/聊天，鸭哥实测睡眠也更好——重点是别让大脑进入高强度、收不住的状态。</li>
-<li><span class="lead">几乎免费的杠杆：</span>睡前给手头的事「强行收束」——让 AI 把当天讨论做个总结、导出结论/待办，给大脑一个「已存盘，可退出」的信号（评论区 Neptune 的蔡加尼克效应）。你本来就有写 HANDOFF / 续接提示的习惯，把它当成睡眠开关用。</li>
-<li><span class="lead">把最后一批任务留到早上交：</span>睡前只记「下一步怎么改」，别开新线程。</li>
+<li><span class="lead">看有没有控制上床时间后的效应：</span>见 analysis.md 的回归——若「晚用 AI」在控制上床时间后仍伤睡眠，说明伤的是<b>质量</b>不只是让你睡得晚。
+<div class="en"><span class="lead">Check the bedtime-controlled effect:</span> see the regression in analysis.md — if the factor still hurts after controlling for bedtime, it hurts sleep <b>quality</b>, not just duration.</div></li>
+<li><span class="lead">改一个变量，再让下几周数据检验：</span>挑相关性最强的那个因素，只改它，别一次改一堆——否则下次分不清是哪一项起了作用。
+<div class="en"><span class="lead">Change one variable, then let the next weeks verify:</span> pick the single strongest factor and change only it — changing several at once makes the next analysis unreadable.</div></li>
+<li><span class="lead">这是相关不是因果：</span>留意共同原因（压力大的一天既让你熬夜用屏，也让你睡得差）。
+<div class="en"><span class="lead">Correlation, not causation:</span> watch for common causes (a stressful day drives both late screen use and bad sleep).</div></li>
 </ul>
-<p class="foot">数据说明：41 晚同时有睡眠与 AI 记录；4 个白天补觉的夜晚已单独标记；HRV 早期部分缺失。原始数据全部只存在你本机（未上传、未进 git）。</p>
+<p class="foot">共 35 晚同时有睡眠与因素记录。原始数据只存在你本机（未上传、未进 git）。
+<span class="en">35 nights with both sleep and factor data. All raw data stays local — never uploaded, never committed.</span></p>
 </div>
 </div></body></html>
