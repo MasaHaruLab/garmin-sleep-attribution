@@ -1,0 +1,16 @@
+# Personal health data — NEVER commit. Stays local-only.
+data/
+reports/
+
+# Garmin login token — credential material, valid ~1 year.
+.garmin_tokens/
+GARMINTOKENS
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# tooling state
+.omc/
+.claude/
