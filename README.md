@@ -54,7 +54,7 @@ cp examples/sample_ai_usage.csv data/ai_usage.csv
 
 ## 致谢
 
-- 方法来源:鸭哥《AI 如何导致和修复了我的失眠问题》。
+- 方法来源:鸭哥《AI 如何导致和修复了我的失眠问题》(发表于 [Superlinear Academy](https://www.superlinear.academy/c/ai-resources/ai-sleep))。本项目为独立复刻其方法,非 fork。
 - Garmin 数据经 [`python-garminconnect`](https://github.com/cyberjunky/python-garminconnect)(非官方)。
 
 ---
@@ -129,7 +129,9 @@ method's origin language). The code and this README are bilingual.
 
 ## Credits
 
-- Method: 鸭哥 (Yage), *How AI caused, and then fixed, my insomnia*.
+- Method: 鸭哥 (Yage), *How AI caused, and then fixed, my insomnia* (published on
+  [Superlinear Academy](https://www.superlinear.academy/c/ai-resources/ai-sleep)).
+  This project is an independent replication of the method, not a fork.
 - Garmin data via [`python-garminconnect`](https://github.com/cyberjunky/python-garminconnect) (unofficial).
 
 ## License
