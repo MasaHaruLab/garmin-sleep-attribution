@@ -66,4 +66,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as e:  # noqa: BLE001 — every run must leave a trace in LOGFILE
+        log(f"CRASH {type(e).__name__}: {e}\n\n{traceback.format_exc()}")
+        print(f"\n✗ Exited early: {type(e).__name__}: {e}")
+        print(f"  Details written to {LOGFILE}")
+        raise SystemExit(1)
