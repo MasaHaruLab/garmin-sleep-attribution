@@ -26,6 +26,7 @@ TOKENSTORE = ROOT / ".garmin_tokens"
 RAW = ROOT / "data" / "garmin_raw"
 OUT = ROOT / "data" / "garmin_sleep.csv"
 ACT_OUT = ROOT / "data" / "garmin_exercise.csv"
+DAILY_OUT = ROOT / "data" / "garmin_daily.csv"
 NIGHT_CUTOFF_HOUR = 4
 
 
@@ -66,6 +67,73 @@ def hhmm(dt: datetime | None) -> str:
 
 def secs_to_h(s) -> str:
     return round(s / 3600, 2) if isinstance(s, (int, float)) else ""
+
+
+def _bb_high_low(bb_day: dict) -> tuple:
+    """Body-battery high/low from one per-day dict. Server key names vary by
+    account/version, so try direct keys first, then scan the values array;
+    empty strings when nothing usable (verified only against live data)."""
+    for hi_k, lo_k in (("max", "min"), ("highestBatteryLevel", "lowestBatteryLevel"),
+                       ("bodyBatteryHighestValue", "bodyBatteryLowestValue")):
+        hi, lo = bb_day.get(hi_k), bb_day.get(lo_k)
+        if isinstance(hi, (int, float)) and isinstance(lo, (int, float)):
+            return hi, lo
+    vals = [v[1] for v in (bb_day.get("bodyBatteryValuesArray") or [])
+            if isinstance(v, (list, tuple)) and len(v) > 1 and isinstance(v[1], (int, float))]
+    return (max(vals), min(vals)) if vals else ("", "")
+
+
+def build_daily_row(cd: str, steps_day: dict, bb_day: dict, stress: dict, acts: list) -> dict:
+    """Pure assembly of one garmin_daily.csv row from raw API pieces (testable offline)."""
+    row = {"date": cd}
+    row["steps"] = steps_day.get("totalSteps", "") if isinstance(steps_day, dict) else ""
+    row["body_battery_high"], row["body_battery_low"] = _bb_high_low(bb_day if isinstance(bb_day, dict) else {})
+    row["stress_avg"] = stress.get("avgStressLevel", "") if isinstance(stress, dict) else ""
+    names = [dig(a, ("activityType", "typeKey"), default="") or a.get("activityName", "")
+             for a in acts if isinstance(a, dict)]
+    names = [n for n in names if n]
+    row["activity_names"] = "|".join(names)
+    dur = sum((a.get("duration") or 0) for a in acts if isinstance(a, dict))
+    row["activity_minutes"] = int(round(dur / 60)) if dur else ""
+    return row
+
+
+def pull_daily(g, days: int) -> None:
+    """Pull daytime metrics: steps, body battery, stress, activities.
+    One row per day (today included — morning runs give a partial day).
+    Writes garmin_daily.csv."""
+    rows = []
+    today = date.today()
+    for i in range(0, days + 1):
+        d = today - timedelta(days=i)
+        cd = d.isoformat()
+
+        def _safe(fn, default):
+            try:
+                return fn() or default
+            except Exception:  # noqa: BLE001
+                return default
+            finally:
+                time.sleep(0.25)
+
+        steps_list = _safe(lambda: g.get_daily_steps(cd, cd), [])
+        steps_day = steps_list[0] if isinstance(steps_list, list) and steps_list else {}
+        bb_list = _safe(lambda: g.get_body_battery(cd), [])
+        bb_day = bb_list[0] if isinstance(bb_list, list) and bb_list else {}
+        stress = _safe(lambda: g.get_all_day_stress(cd), {})
+        acts = _safe(lambda: g.get_activities_by_date(cd, cd), [])
+
+        rows.append(build_daily_row(cd, steps_day, bb_day, stress, acts))
+
+    rows.sort(key=lambda r: r["date"])
+    cols = ["date", "steps", "body_battery_high", "body_battery_low", "stress_avg",
+            "activity_names", "activity_minutes"]
+    DAILY_OUT.parent.mkdir(parents=True, exist_ok=True)
+    with open(DAILY_OUT, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"Pulled {len(rows)} days of daytime metrics.  Wrote {DAILY_OUT}")
 
 
 def pull_exercise(g, days: int) -> None:
@@ -206,6 +274,7 @@ def main() -> int:
     print(f"Raw   {RAW}/ (kept for schema fixes)")
 
     pull_exercise(g, days)  # workouts → garmin_exercise.csv (empty until she trains)
+    pull_daily(g, days)     # daytime metrics → garmin_daily.csv
     return 0
 
 
