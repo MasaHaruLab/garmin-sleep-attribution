@@ -12,7 +12,9 @@ Your password is typed hidden (getpass) and is used only to fetch a login token,
 which is saved to .garmin_tokens/ (gitignored, valid ~1 year). After this, the
 puller reuses the token and you never log in again.
 """
+import datetime
 import getpass
+import logging
 import sys
 import traceback
 from pathlib import Path
@@ -25,8 +27,11 @@ LOGFILE = ROOT / "data" / "last_login_result.txt"  # Claude reads this to diagno
 
 
 def log(msg: str) -> None:
+    # Append-mode: concurrent/stale windows must never clobber a newer result.
     LOGFILE.parent.mkdir(parents=True, exist_ok=True)
-    LOGFILE.write_text(msg, encoding="utf-8")
+    stamp = datetime.datetime.now().isoformat(timespec="seconds")
+    with LOGFILE.open("a", encoding="utf-8") as fh:
+        fh.write(f"\n--- {stamp} ---\n{msg}\n")
 
 
 def main() -> int:
@@ -46,6 +51,12 @@ def main() -> int:
     garmin = garminconnect.Garmin(
         email=email, password=password, is_cn=is_cn, prompt_mfa=prompt_mfa
     )
+    # Force the desktop-portal strategy — the same flow a real browser uses.
+    # The widget flow triggers MFA but Garmin never dispatches the email for it
+    # (verified 2026-07-11: three attempts, zero passcode emails); portal-flow
+    # browser logins on 07-07 got their codes instantly.
+    garmin.client.skip_strategies = {"mobile+cffi", "mobile+requests", "widget+cffi"}
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         garmin.login()
     except Exception as e:  # noqa: BLE001 — surface + log the real cause
