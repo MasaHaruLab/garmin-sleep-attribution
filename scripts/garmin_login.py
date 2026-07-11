@@ -38,11 +38,10 @@ def main() -> int:
     password = getpass.getpass("Garmin password (hidden while typing, this is normal): ")
 
     def prompt_mfa() -> str:
-        print("\n📧 Garmin just emailed you a verification code "
-              "(check your spam folder too).")
-        print("   Type the digits and press Enter. Do NOT press Enter on an "
-              "empty line to skip — that fails the login.")
-        return input("Verification code (6 digits): ").strip()
+        print("\n📧 Garmin 正在给你的邮箱发验证码——**可能要等几分钟才到**,这个窗口会一直等你,别急。")
+        print("   (Garmin is emailing you a one-time code; it can take several minutes.)")
+        print("   码到了再输数字按回车;邮件没到之前不要按回车(空码=登录失败)。")
+        return input("Verification code (6 digits) / 验证码: ").strip()
 
     garmin = garminconnect.Garmin(
         email=email, password=password, is_cn=is_cn, prompt_mfa=prompt_mfa
