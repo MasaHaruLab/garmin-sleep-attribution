@@ -22,6 +22,8 @@ HOME = Path.home()
 CLAUDE_GLOB = str(HOME / ".claude" / "projects" / "**" / "*.jsonl")
 CODEX_ROLLOUTS = str(HOME / ".codex" / "archived_sessions" / "rollout-*.jsonl")
 CODEX_HISTORY = HOME / ".codex" / "history.jsonl"
+TOKENSTEP_JSON = (HOME / "Library" / "Application Support" / "TokenStep"
+                  / "data" / "usage.json")
 OUT = Path(__file__).resolve().parent.parent / "data" / "ai_usage.csv"
 
 NIGHT_CUTOFF_HOUR = 4  # events before 04:00 local belong to the previous evening
@@ -173,10 +175,40 @@ def scan_codex(nights: dict[str, NightAgg]) -> dict:
     return {"sessions": sessions, "end_from_mtime": used_mtime}
 
 
+def tokenstep_by_night() -> dict[str, tuple[int, int]]:
+    """night_iso -> (tokens_day, tokens_evening) from the TokenStep app's store.
+
+    tokens_day: TokenStep's daily total for the night's calendar date (how hard
+    the day's AI work was). tokens_evening: hourly-rhythm tokens in 20:00-24:00
+    of that date plus 00:00-04:00 of the next — same cutoff as night_key().
+    Missing app / missing date -> absent key (caller writes "", not a fake 0).
+    """
+    if not TOKENSTEP_JSON.exists():
+        return {}
+    try:
+        with open(TOKENSTEP_JSON, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    day_total = {r["date"]: int(r.get("total_tokens") or 0)
+                 for r in d.get("daily", []) if r.get("date")}
+    buckets = {r["date"]: {b.get("hour"): int(b.get("tokens") or 0)
+                           for b in r.get("buckets", [])}
+               for r in d.get("rhythms", []) if r.get("date")}
+    out = {}
+    for date_iso, total in day_total.items():
+        nxt = (datetime.fromisoformat(date_iso) + timedelta(days=1)).date().isoformat()
+        eve = sum(buckets.get(date_iso, {}).get(h, 0) for h in (20, 21, 22, 23)) \
+            + sum(buckets.get(nxt, {}).get(h, 0) for h in range(NIGHT_CUTOFF_HOUR))
+        out[date_iso] = (total, eve)
+    return out
+
+
 def main():
     nights: dict[str, NightAgg] = {}
     c = scan_claude(nights)
     x = scan_codex(nights)
+    tokens = tokenstep_by_night()
 
     # Fill a continuous date range so zero-AI nights (the "good sleep" controls)
     # appear explicitly — the regression needs the contrast, not just busy nights.
@@ -212,6 +244,11 @@ def main():
                     "distinct_late_convos": len(a.late_sessions),
                 })
             day += timedelta(days=1)
+
+    for row in rows:
+        t = tokens.get(row["date"])
+        row["tokens_day"] = t[0] if t else ""
+        row["tokens_evening"] = t[1] if t else ""
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", newline="", encoding="utf-8") as fh:
