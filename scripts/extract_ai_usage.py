@@ -29,6 +29,12 @@ OUT = Path(__file__).resolve().parent.parent / "data" / "ai_usage.csv"
 NIGHT_CUTOFF_HOUR = 4  # events before 04:00 local belong to the previous evening
 TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
 
+# Presence rule (CEO 2026-07-11): autonomous runs after she leaves (黑屏) are not
+# her exposure. Each night's valid window = her FIRST human message that day →
+# her LAST human message that night, plus a short wrap-up grace while she
+# watches the final response land. Everything outside the window is ignored.
+PRESENCE_GRACE = timedelta(minutes=30)
+
 
 def parse_iso(s: str) -> datetime | None:
     if not isinstance(s, str):
@@ -98,9 +104,31 @@ def decimal_to_hhmm(d: float) -> str:
     return f"{h:02d}:{m:02d}{nxt}"
 
 
-def scan_claude(nights: dict[str, NightAgg]) -> dict:
+def is_human_msg(d: dict) -> bool:
+    """A transcript line she actually typed — not tool results, not subagent
+    sidechains, not harness meta messages that merely wear the user role."""
+    if d.get("type") != "user" or d.get("isSidechain") or d.get("isMeta"):
+        return False
+    if "toolUseResult" in d:
+        return False
+    msg = d.get("message") or {}
+    content = msg.get("content")
+    if isinstance(content, list):
+        return not any(isinstance(b, dict) and b.get("type") == "tool_result"
+                       for b in content)
+    return isinstance(content, str) and bool(content.strip())
+
+
+def scan_claude() -> tuple[list, list, dict]:
+    """Single walk -> (events, human message times, stats).
+
+    Events are (dt, session) for every timestamped line; human times feed the
+    presence windows. Only Claude Code messages define presence — Codex runs
+    are dispatched automation, their prompts don't prove she was at the desk.
+    """
     files = glob.glob(CLAUDE_GLOB, recursive=True)
-    events = 0
+    events: list[tuple[datetime, str | None]] = []
+    human_times: list[datetime] = []
     for f in files:
         try:
             with open(f, encoding="utf-8") as fh:
@@ -115,13 +143,29 @@ def scan_claude(nights: dict[str, NightAgg]) -> dict:
                     dt = parse_iso(d.get("timestamp", ""))
                     if dt is None:
                         continue
-                    key, lateness = night_key(dt)
-                    sess = d.get("sessionId") or d.get("session_id")
-                    nights.setdefault(key, NightAgg()).add(lateness, "claude", sess)
-                    events += 1
+                    events.append((dt, d.get("sessionId") or d.get("session_id")))
+                    if is_human_msg(d):
+                        human_times.append(dt)
         except (OSError, UnicodeDecodeError):
             continue
-    return {"files": len(files), "events": events}
+    return events, human_times, {"files": len(files), "events": len(events),
+                                 "human_msgs": len(human_times)}
+
+
+def build_windows(human_times: list[datetime]) -> dict[str, tuple[datetime, datetime]]:
+    """night_iso -> (first human msg, last human msg + grace) per night key."""
+    windows: dict[str, tuple[datetime, datetime]] = {}
+    for dt in human_times:
+        key, _ = night_key(dt)
+        cur = windows.get(key)
+        windows[key] = (min(cur[0], dt), max(cur[1], dt)) if cur else (dt, dt)
+    return {k: (a, b + PRESENCE_GRACE) for k, (a, b) in windows.items()}
+
+
+def in_window(dt: datetime, windows: dict[str, tuple[datetime, datetime]]) -> bool:
+    key, _ = night_key(dt)
+    win = windows.get(key)
+    return bool(win and win[0] <= dt <= win[1])
 
 
 def _last_ts_in_file(path: str) -> datetime | None:
@@ -146,8 +190,10 @@ def _last_ts_in_file(path: str) -> datetime | None:
     return last
 
 
-def scan_codex(nights: dict[str, NightAgg]) -> dict:
+def scan_codex() -> tuple[list, dict]:
+    """-> (markers, stats); markers are (dt, session_id) session start/end pairs."""
     files = glob.glob(CODEX_ROLLOUTS)
+    markers: list[tuple[datetime, str]] = []
     sessions = 0
     used_mtime = 0
     for f in files:
@@ -165,24 +211,25 @@ def scan_codex(nights: dict[str, NightAgg]) -> dict:
                 used_mtime += 1
             except OSError:
                 end = None
-        session_id = base
         for marker in (start, end):
-            if marker is None:
-                continue
-            key, lateness = night_key(marker)
-            nights.setdefault(key, NightAgg()).add(lateness, "codex", session_id)
+            if marker is not None:
+                markers.append((marker, base))
         sessions += 1
-    return {"sessions": sessions, "end_from_mtime": used_mtime}
+    return markers, {"sessions": sessions, "end_from_mtime": used_mtime}
 
 
-def tokenstep_by_night() -> dict[str, tuple[int, int, int, int]]:
+def tokenstep_by_night(
+    windows: dict[str, tuple[datetime, datetime]],
+) -> dict[str, tuple[int, int, int, int]]:
     """night_iso -> (tokens_day, tokens_evening, hours_day, hours_evening).
 
-    From the TokenStep app's store: daily token volume (intensity) plus the
-    count of active hours (duration) — an hour is active when its rhythm
-    bucket has any tokens. Evening spans 20:00-24:00 of the date plus
-    00:00-04:00 of the next — same cutoff as night_key().
-    Missing app / missing date -> absent key (caller writes "", not a fake 0).
+    From the TokenStep app's store, presence-gated: an hourly rhythm bucket
+    only counts when its hour overlaps that night's attended window, so
+    autonomous runs after she leaves contribute nothing. All four figures are
+    night-keyed (day = 04:00→04:00): tokens_day/hours_day span the whole
+    attended day, the evening pair spans 20:00-04:00. Days inside TokenStep
+    coverage but with no window are a true 0; days outside coverage are absent
+    (caller writes "").
     """
     if not TOKENSTEP_JSON.exists():
         return {}
@@ -191,27 +238,59 @@ def tokenstep_by_night() -> dict[str, tuple[int, int, int, int]]:
             d = json.load(fh)
     except (OSError, ValueError):
         return {}
-    day_total = {r["date"]: int(r.get("total_tokens") or 0)
-                 for r in d.get("daily", []) if r.get("date")}
+    coverage = sorted(r["date"] for r in d.get("daily", []) if r.get("date"))
     buckets = {r["date"]: {b.get("hour"): int(b.get("tokens") or 0)
                            for b in r.get("buckets", [])}
                for r in d.get("rhythms", []) if r.get("date")}
+
+    def hour_start(date_iso: str, h: int) -> datetime:
+        return datetime.fromisoformat(date_iso).replace(hour=h).astimezone()
+
+    def gated(date_iso: str, h: int) -> int:
+        t = buckets.get(date_iso, {}).get(h, 0)
+        if t <= 0:
+            return 0
+        start = hour_start(date_iso, h)
+        key, _ = night_key(start)
+        win = windows.get(key)
+        # the hour counts if any part of [start, start+1h) is attended
+        if win and start <= win[1] and start + timedelta(hours=1) >= win[0]:
+            return t
+        return 0
+
     out = {}
-    for date_iso, total in day_total.items():
+    for date_iso in coverage:
         nxt = (datetime.fromisoformat(date_iso) + timedelta(days=1)).date().isoformat()
-        eve_hours = [buckets.get(date_iso, {}).get(h, 0) for h in (20, 21, 22, 23)] \
-            + [buckets.get(nxt, {}).get(h, 0) for h in range(NIGHT_CUTOFF_HOUR)]
-        hours_day = sum(1 for t in buckets.get(date_iso, {}).values() if t > 0)
-        out[date_iso] = (total, sum(eve_hours), hours_day,
+        day_hours = [gated(date_iso, h) for h in range(NIGHT_CUTOFF_HOUR, 24)] \
+            + [gated(nxt, h) for h in range(NIGHT_CUTOFF_HOUR)]
+        eve_hours = day_hours[20 - NIGHT_CUTOFF_HOUR:]
+        out[date_iso] = (sum(day_hours), sum(eve_hours),
+                         sum(1 for t in day_hours if t > 0),
                          sum(1 for t in eve_hours if t > 0))
     return out
 
 
 def main():
+    claude_events, human_times, c = scan_claude()
+    codex_markers, x = scan_codex()
+    windows = build_windows(human_times)
+
     nights: dict[str, NightAgg] = {}
-    c = scan_claude(nights)
-    x = scan_codex(nights)
-    tokens = tokenstep_by_night()
+    dropped = 0
+    for dt, sess in claude_events:
+        if in_window(dt, windows):
+            key, lateness = night_key(dt)
+            nights.setdefault(key, NightAgg()).add(lateness, "claude", sess)
+        else:
+            dropped += 1
+    for dt, sess in codex_markers:
+        if in_window(dt, windows):
+            key, lateness = night_key(dt)
+            nights.setdefault(key, NightAgg()).add(lateness, "codex", sess)
+        else:
+            dropped += 1
+
+    tokens = tokenstep_by_night(windows)
 
     # Fill a continuous date range so zero-AI nights (the "good sleep" controls)
     # appear explicitly — the regression needs the contrast, not just busy nights.
@@ -262,9 +341,12 @@ def main():
         w.writerows(rows)
 
     span = f"{rows[0]['date']} .. {rows[-1]['date']}" if rows else "—"
-    print(f"Claude: {c['files']} files, {c['events']} events")
+    print(f"Claude: {c['files']} files, {c['events']} events "
+          f"({c['human_msgs']} human messages)")
     print(f"Codex : {x['sessions']} sessions "
           f"({x['end_from_mtime']} used file-mtime as session end)")
+    print(f"Presence gate: {len(windows)} attended days, "
+          f"{dropped} unattended events dropped")
     print(f"Nights: {len(rows)}  span {span}")
     print(f"Wrote  {OUT}")
 
