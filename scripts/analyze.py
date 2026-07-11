@@ -32,8 +32,9 @@ PREDICTORS = ["last_ai_decimal", "n_after_2000", "n_after_2200", "n_after_0000",
               "n_ai_events", "distinct_late_convos", "bedtime_decimal",
               "exercised", "exercise_dur_min", "exercise_intensity_min",
               "exercise_last_hour",
-              # from the TokenStep app: daily token volume + evening (20:00-04:00) volume
-              "tokens_day", "tokens_evening"]
+              # from the TokenStep app: token volume (intensity) and active hours
+              # (duration), daily + evening (20:00-04:00)
+              "tokens_day", "tokens_evening", "ai_hours_day", "ai_hours_evening"]
 # On no-workout nights these are a true 0 (not missing); last_hour stays NaN.
 EXERCISE_ZERO = ["exercised", "n_workouts", "exercise_dur_min", "exercise_intensity_min"]
 # For these outcomes, a HIGHER value is WORSE sleep (so flip interpretation).

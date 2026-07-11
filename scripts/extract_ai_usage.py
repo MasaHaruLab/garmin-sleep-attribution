@@ -175,12 +175,13 @@ def scan_codex(nights: dict[str, NightAgg]) -> dict:
     return {"sessions": sessions, "end_from_mtime": used_mtime}
 
 
-def tokenstep_by_night() -> dict[str, tuple[int, int]]:
-    """night_iso -> (tokens_day, tokens_evening) from the TokenStep app's store.
+def tokenstep_by_night() -> dict[str, tuple[int, int, int, int]]:
+    """night_iso -> (tokens_day, tokens_evening, hours_day, hours_evening).
 
-    tokens_day: TokenStep's daily total for the night's calendar date (how hard
-    the day's AI work was). tokens_evening: hourly-rhythm tokens in 20:00-24:00
-    of that date plus 00:00-04:00 of the next — same cutoff as night_key().
+    From the TokenStep app's store: daily token volume (intensity) plus the
+    count of active hours (duration) — an hour is active when its rhythm
+    bucket has any tokens. Evening spans 20:00-24:00 of the date plus
+    00:00-04:00 of the next — same cutoff as night_key().
     Missing app / missing date -> absent key (caller writes "", not a fake 0).
     """
     if not TOKENSTEP_JSON.exists():
@@ -198,9 +199,11 @@ def tokenstep_by_night() -> dict[str, tuple[int, int]]:
     out = {}
     for date_iso, total in day_total.items():
         nxt = (datetime.fromisoformat(date_iso) + timedelta(days=1)).date().isoformat()
-        eve = sum(buckets.get(date_iso, {}).get(h, 0) for h in (20, 21, 22, 23)) \
-            + sum(buckets.get(nxt, {}).get(h, 0) for h in range(NIGHT_CUTOFF_HOUR))
-        out[date_iso] = (total, eve)
+        eve_hours = [buckets.get(date_iso, {}).get(h, 0) for h in (20, 21, 22, 23)] \
+            + [buckets.get(nxt, {}).get(h, 0) for h in range(NIGHT_CUTOFF_HOUR)]
+        hours_day = sum(1 for t in buckets.get(date_iso, {}).values() if t > 0)
+        out[date_iso] = (total, sum(eve_hours), hours_day,
+                         sum(1 for t in eve_hours if t > 0))
     return out
 
 
@@ -249,6 +252,8 @@ def main():
         t = tokens.get(row["date"])
         row["tokens_day"] = t[0] if t else ""
         row["tokens_evening"] = t[1] if t else ""
+        row["ai_hours_day"] = t[2] if t else ""
+        row["ai_hours_evening"] = t[3] if t else ""
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with open(OUT, "w", newline="", encoding="utf-8") as fh:
